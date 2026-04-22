@@ -34,6 +34,6 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# Keep the data directory but allow committing events.db via CI
-data/*.db
+# Commit events.db so Streamlit Cloud can read it; ignore other db files
+!data/events.db
 !data/.gitkeep
