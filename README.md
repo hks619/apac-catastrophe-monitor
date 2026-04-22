@@ -70,19 +70,12 @@ apac-catastrophe-monitor/
         └── ingest.yml     # 3-hourly scheduled ingestion
 ```
 
-## Extending with Claude Code
+## Extending
 
-**Add a new data source**
-> "Add `src/sources/pdc.py` that fetches from the Pacific Disaster Center API at `https://www.pdc.org/` and integrates it into `src/ingest.py` alongside the existing sources. Match the same event dict schema used by the other sources."
+**Add a new data source** — create a new module under `src/sources/` that returns a list of event dicts matching the schema in `src/storage.py`, then register it in the `_SOURCES` list in `src/ingest.py`.
 
-**Add Slack / email alerts for red-severity events**
-> "Add `src/alerts.py` that checks for new red-severity events inserted in the last ingestion run and sends a Slack webhook message (SLACK_WEBHOOK_URL env var). Call it from `src/ingest.py` after the upsert loop."
+**Add Slack / email alerts** — add `src/alerts.py` that queries for new red-severity events after each ingestion run and sends a webhook message. Call it from `src/ingest.py` after the upsert loop.
 
-**Country-level risk scoring**
-> "Add a risk scoring module `src/risk.py` that aggregates event frequency and average severity per ISO3 country over the past 12 months, assigns a risk tier (low / medium / high / critical), and surfaces it as a choropleth map in `src/dashboard.py`."
+**Country-level risk scoring** — add `src/risk.py` that aggregates event frequency and severity per ISO3 country, assigns a risk tier (low / medium / high / critical), and surfaces it as a choropleth in `src/dashboard.py`.
 
-**Historical backfill**
-> "Extend `src/sources/usgs.py` to accept a `start_time` / `end_time` parameter using the USGS ComCat API (`https://earthquake.usgs.gov/fdsnws/event/1/`) instead of the rolling feed, and add a CLI flag `--backfill-days N` to `src/ingest.py`."
-
-**Add Mapbox token for satellite tiles**
-> "Read `MAPBOX_TOKEN` from an env var in `src/dashboard.py` and pass it to `pdk.Deck(api_keys={'mapbox': token})` so the map can use satellite-streets style."
+**Historical backfill** — extend `src/sources/usgs.py` to use the USGS ComCat API with `start_time` / `end_time` parameters and add a `--backfill-days N` CLI flag to `src/ingest.py`.
