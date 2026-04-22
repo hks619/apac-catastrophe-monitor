@@ -108,7 +108,8 @@ def main():
         mask &= df["event_type"].isin(selected_types)
     if selected_sources:
         mask &= df["source"].isin(selected_sources)
-    mask &= df["magnitude"].isna() | (df["magnitude"] >= min_mag)
+    # Magnitude filter only applies to earthquakes — cyclone wind speeds are in knots
+    mask &= ~(df["source"] == "usgs") | df["magnitude"].isna() | (df["magnitude"] >= min_mag)
 
     filtered = df[mask].copy()
 
@@ -125,25 +126,69 @@ def main():
     # ── Globe ──────────────────────────────────────────────────────────────────
     map_df = filtered.dropna(subset=["lat", "lon"]).copy()
     if not map_df.empty:
-        map_df["color"]   = map_df.apply(_event_color, axis=1)
-        map_df["radius"]  = map_df["magnitude"].fillna(5.0).apply(lambda m: max(40_000, m * 18_000))
-        map_df["tooltip"] = map_df.apply(
-            lambda r: f"{r['title']} | {r['event_type']} | {r['source']}", axis=1
-        )
-        scatter = pdk.Layer(
-            "ScatterplotLayer",
-            data=map_df,
-            get_position="[lon, lat]",
-            get_color="color",
-            get_radius="radius",
-            pickable=True,
-            opacity=0.9,
-            stroked=True,
-            get_line_color=[255, 255, 255, 20],
-            line_width_min_pixels=1,
-        )
+        layers = []
+
+        # ── Cyclone tracks: PathLayer grouped by storm ─────────────────────
+        cyc_df = map_df[map_df["source"] == "ibtracs"].copy()
+        if not cyc_df.empty:
+            cyc_df["storm_id"] = cyc_df["event_id"].str.split("|").str[0]
+            tracks = []
+            for sid, grp in cyc_df.sort_values("occurred_at").groupby("storm_id"):
+                coords = grp[["lon", "lat"]].values.tolist()
+                if len(coords) < 2:
+                    continue
+                peak_sev = next(
+                    (s for s in ("red", "orange", "green") if s in grp["severity"].values),
+                    "green",
+                )
+                color = _SEVERITY_COLOR.get(peak_sev, [255, 200, 0, 200])
+                name = grp["title"].iloc[0].replace("Tropical Cyclone ", "")
+                wind_vals = grp["magnitude"].dropna()
+                peak_wind = f"{int(wind_vals.max())} kt" if not wind_vals.empty else "?"
+                tracks.append({
+                    "path": coords,
+                    "tooltip": f"Cyclone {name} | peak {peak_wind} | {peak_sev} alert",
+                    "occurred_at": f"{grp['occurred_at'].min()[:10]} → {grp['occurred_at'].max()[:10]}",
+                    "color": color,
+                })
+            if tracks:
+                layers.append(pdk.Layer(
+                    "PathLayer",
+                    data=tracks,
+                    get_path="path",
+                    get_color="color",
+                    get_width=55_000,
+                    width_min_pixels=1,
+                    pickable=True,
+                    opacity=0.85,
+                ))
+
+        # ── All other events: ScatterplotLayer ─────────────────────────────
+        other_df = map_df[map_df["source"] != "ibtracs"].copy()
+        if not other_df.empty:
+            other_df["color"]   = other_df.apply(_event_color, axis=1)
+            other_df["radius"]  = other_df["magnitude"].fillna(5.0).apply(
+                lambda m: max(40_000, m * 18_000)
+            )
+            other_df["tooltip"] = other_df.apply(
+                lambda r: f"{r['title']} | {r['event_type']} | {r['source']}", axis=1
+            )
+            other_df["occurred_at"] = other_df["occurred_at"].astype(str)
+            layers.append(pdk.Layer(
+                "ScatterplotLayer",
+                data=other_df,
+                get_position="[lon, lat]",
+                get_color="color",
+                get_radius="radius",
+                pickable=True,
+                opacity=0.9,
+                stroked=True,
+                get_line_color=[255, 255, 255, 20],
+                line_width_min_pixels=1,
+            ))
+
         deck = pdk.Deck(
-            layers=[scatter],
+            layers=layers,
             views=[pdk.View(type="_GlobeView", controller=True)],
             initial_view_state=pdk.ViewState(latitude=10, longitude=115, zoom=1),
             map_provider="carto",

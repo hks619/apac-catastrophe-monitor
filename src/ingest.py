@@ -1,6 +1,6 @@
 import logging
 
-from src.sources import eonet, gdacs, reliefweb, usgs
+from src.sources import eonet, gdacs, ibtracs, reliefweb, usgs
 from src.storage import get_conn, init_db, upsert_event
 
 logging.basicConfig(
@@ -10,10 +10,11 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 _SOURCES = [
-    ("usgs", usgs.fetch),
-    ("gdacs", gdacs.fetch),
+    ("usgs",      usgs.fetch),
+    ("gdacs",     gdacs.fetch),
     ("reliefweb", reliefweb.fetch),
-    ("eonet", eonet.fetch),
+    ("eonet",     eonet.fetch),
+    ("ibtracs",   ibtracs.fetch),
 ]
 
 

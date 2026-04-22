@@ -3,17 +3,17 @@ from datetime import datetime, timezone
 
 from src.config import APAC_BBOX, MIN_MAGNITUDE, SOURCES
 
+_COMCAT_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query"
+
 
 def _in_apac(lon: float, lat: float) -> bool:
     b = APAC_BBOX
     return b["lat_min"] <= lat <= b["lat_max"] and b["lon_min"] <= lon <= b["lon_max"]
 
 
-def fetch() -> list[dict]:
-    resp = requests.get(SOURCES["usgs"], timeout=30)
-    resp.raise_for_status()
+def _parse_features(features: list) -> list[dict]:
     events = []
-    for f in resp.json()["features"]:
+    for f in features:
         p = f["properties"]
         lon, lat, _ = f["geometry"]["coordinates"]
         mag = p.get("mag") or 0.0
@@ -41,3 +41,31 @@ def fetch() -> list[dict]:
             "url": p.get("url", ""),
         })
     return events
+
+
+def fetch() -> list[dict]:
+    resp = requests.get(SOURCES["usgs"], timeout=30)
+    resp.raise_for_status()
+    return _parse_features(resp.json()["features"])
+
+
+def fetch_historical(start: datetime, end: datetime) -> list[dict]:
+    """Fetch from the USGS ComCat API for an arbitrary date range."""
+    resp = requests.get(
+        _COMCAT_URL,
+        params={
+            "format": "geojson",
+            "starttime": start.strftime("%Y-%m-%d"),
+            "endtime": end.strftime("%Y-%m-%d"),
+            "minmagnitude": MIN_MAGNITUDE,
+            "minlatitude": APAC_BBOX["lat_min"],
+            "maxlatitude": APAC_BBOX["lat_max"],
+            "minlongitude": APAC_BBOX["lon_min"],
+            "maxlongitude": APAC_BBOX["lon_max"],
+            "limit": 20_000,
+            "orderby": "time",
+        },
+        timeout=60,
+    )
+    resp.raise_for_status()
+    return _parse_features(resp.json()["features"])
