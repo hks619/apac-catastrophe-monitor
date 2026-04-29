@@ -225,7 +225,7 @@ def render_live_events(df: pd.DataFrame):
         deck = pdk.Deck(
             layers=layers,
             views=[pdk.View(type="_GlobeView", controller=True)],
-            initial_view_state=pdk.ViewState(latitude=20, longitude=0, zoom=1),
+            initial_view_state=pdk.ViewState(latitude=10, longitude=150, zoom=1),
             map_provider="carto",
             map_style="https://basemaps.cartocdn.com/gl/dark-matter-nolabels-gl-style/style.json",
             tooltip={"text": "{tooltip}\n{occurred_at}"},
