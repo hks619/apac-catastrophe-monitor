@@ -69,7 +69,7 @@ def load_events() -> pd.DataFrame:
     df = pd.read_sql("SELECT * FROM events ORDER BY occurred_at DESC", conn)
     conn.close()
     if not df.empty:
-        df["occurred_at"] = pd.to_datetime(df["occurred_at"], utc=True, errors="coerce")
+        df["occurred_at"] = pd.to_datetime(df["occurred_at"], format="ISO8601", utc=True, errors="coerce")
     return df
 
 
