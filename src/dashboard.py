@@ -179,7 +179,7 @@ def render_live_events(df: pd.DataFrame):
         if not other_df.empty:
             other_df["color"]    = other_df.apply(_event_color, axis=1)
             other_df["radius"]   = other_df["magnitude"].fillna(5.0).apply(
-                lambda m: max(40_000, m * 18_000)
+                lambda m: max(10_000, m * 5_000)
             )
             other_df["tooltip"]  = other_df.apply(
                 lambda r: f"{r['title']} | {r['event_type']} | {r['source']}", axis=1
@@ -192,6 +192,8 @@ def render_live_events(df: pd.DataFrame):
                 get_position="[lon, lat]",
                 get_color="color",
                 get_radius="radius",
+                radius_min_pixels=3,
+                radius_max_pixels=12,
                 pickable=True,
                 opacity=0.9,
                 stroked=True,
