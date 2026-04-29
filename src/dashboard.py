@@ -38,6 +38,22 @@ _TYPE_COLOR = {
 }
 _DEFAULT_COLOR = [107, 114, 128, 180]
 
+# Maps raw event_type values to PERIL_QUERIES keys
+_EVENT_TYPE_TO_PERIL = {
+    "earthquake": "Earthquake",
+    "eq":         "Earthquake",
+    "cyclone":    "Cyclone / Typhoon",
+    "tc":         "Cyclone / Typhoon",
+    "storm":      "Cyclone / Typhoon",
+    "wildfire":   "Wildfire",
+    "wf":         "Wildfire",
+    "flood":      "Flood",
+    "fl":         "Flood",
+    "volcano":    "Volcano",
+    "drought":    "Drought",
+    "dr":         "Drought",
+}
+
 
 @st.cache_data(ttl=300)
 def load_events() -> pd.DataFrame:
@@ -140,14 +156,16 @@ def render_live_events(df: pd.DataFrame):
                 wind_vals = grp["magnitude"].dropna()
                 peak_wind = f"{int(wind_vals.max())} kt" if not wind_vals.empty else "?"
                 tracks.append({
-                    "path":       coords,
-                    "tooltip":    f"Cyclone {name} | peak {peak_wind} | {peak_sev} alert",
+                    "path":        coords,
+                    "event_type":  "cyclone",
+                    "tooltip":     f"Cyclone {name} | peak {peak_wind} | {peak_sev} alert",
                     "occurred_at": f"{str(grp['occurred_at'].min())[:10]} → {str(grp['occurred_at'].max())[:10]}",
-                    "color":      color,
+                    "color":       color,
                 })
             if tracks:
                 layers.append(pdk.Layer(
                     "PathLayer",
+                    id="tracks",
                     data=tracks,
                     get_path="path",
                     get_color="color",
@@ -169,6 +187,7 @@ def render_live_events(df: pd.DataFrame):
             other_df["occurred_at"] = other_df["occurred_at"].astype(str)
             layers.append(pdk.Layer(
                 "ScatterplotLayer",
+                id="events",
                 data=other_df,
                 get_position="[lon, lat]",
                 get_color="color",
@@ -189,7 +208,38 @@ def render_live_events(df: pd.DataFrame):
             tooltip={"text": "{tooltip}\n{occurred_at}"},
             parameters={"cull": True},
         )
-        st.pydeck_chart(deck, height=600, use_container_width=True)
+        chart_event = st.pydeck_chart(
+            deck, height=600, use_container_width=True,
+            on_select="rerun", selection_mode="single-object",
+        )
+
+        # ── Click-to-news panel ────────────────────────────────────────────
+        selected = None
+        sel_objects = getattr(getattr(chart_event, "selection", None), "objects", None) or {}
+        for layer_hits in sel_objects.values():
+            if layer_hits:
+                selected = layer_hits[0]
+                break
+
+        if selected:
+            event_type = selected.get("event_type", "")
+            peril_name = _EVENT_TYPE_TO_PERIL.get(event_type, "All Perils")
+            tooltip    = selected.get("tooltip", event_type)
+            occurred   = selected.get("occurred_at", "")
+
+            st.markdown("---")
+            with st.container(border=True):
+                st.markdown(f"**{tooltip}**")
+                if occurred:
+                    st.caption(occurred)
+                st.markdown(f"**Related news — {peril_name}**")
+                with st.spinner("Fetching news…"):
+                    articles = cached_news(PERIL_QUERIES[peril_name])
+                for article in articles[:6]:
+                    src_date = " · ".join(p for p in [article["source"], article["published"]] if p)
+                    st.markdown(f"- [{article['title']}]({article['link']})")
+                    if src_date:
+                        st.caption(f"  {src_date}")
     else:
         st.info("No events with coordinates match the current filters.")
 
