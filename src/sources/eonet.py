@@ -1,26 +1,31 @@
 import requests
 
-from src.config import SOURCES
+from src.config import APAC_BBOX, SOURCES
 
 _CATEGORY_MAP = {
-    "wildfires":    "wildfire",
-    "volcanoes":    "volcano",
+    "wildfires": "wildfire",
+    "volcanoes": "volcano",
     "severeStorms": "storm",
-    "floods":       "flood",
-    "earthquakes":  "earthquake",
-    "seaLakeIce":   "ice",
-    "drought":      "drought",
-    "dustHaze":     "dust",
-    "manmade":      "manmade",
-    "snow":         "snow",
+    "floods": "flood",
+    "earthquakes": "earthquake",
+    "seaLakeIce": "ice",
+    "drought": "drought",
+    "dustHaze": "dust",
+    "manmade": "manmade",
+    "snow": "snow",
     "tempExtremes": "temperature",
 }
+
+
+def _in_apac(lon: float, lat: float) -> bool:
+    b = APAC_BBOX
+    return b["lat_min"] <= lat <= b["lat_max"] and b["lon_min"] <= lon <= b["lon_max"]
 
 
 def fetch() -> list[dict]:
     resp = requests.get(
         SOURCES["eonet"],
-        params={"status": "all", "limit": 500, "days": 90},
+        params={"status": "all", "limit": 300, "days": 90},
         timeout=30,
     )
     resp.raise_for_status()
@@ -30,31 +35,34 @@ def fetch() -> list[dict]:
         geometries = ev.get("geometry", [])
         if not geometries:
             continue
+        # Use the most recent point geometry
         point_geom = next(
             (g for g in reversed(geometries) if g.get("type") == "Point"), None
         )
         if point_geom is None:
             continue
         lon, lat = point_geom["coordinates"]
+        if not _in_apac(lon, lat):
+            continue
 
         categories = ev.get("categories", [])
-        cat_id     = categories[0].get("id", "") if categories else ""
+        cat_id = categories[0].get("id", "") if categories else ""
         event_type = _CATEGORY_MAP.get(cat_id, cat_id.lower() or "unknown")
 
         sources = ev.get("sources", [])
-        url     = sources[0].get("url", "") if sources else ""
+        url = sources[0].get("url", "") if sources else ""
 
         events.append({
-            "source":     "eonet",
-            "event_id":   ev["id"],
+            "source": "eonet",
+            "event_id": ev["id"],
             "event_type": event_type,
-            "title":      ev.get("title", ""),
-            "lat":        lat,
-            "lon":        lon,
-            "severity":   None,
-            "magnitude":  None,
-            "country":    None,
+            "title": ev.get("title", ""),
+            "lat": lat,
+            "lon": lon,
+            "severity": None,
+            "magnitude": None,
+            "country": None,
             "occurred_at": point_geom.get("date"),
-            "url":        url,
+            "url": url,
         })
     return events

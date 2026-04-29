@@ -1,9 +1,14 @@
 import requests
 from datetime import datetime, timezone
 
-from src.config import MIN_MAGNITUDE, SOURCES
+from src.config import APAC_BBOX, MIN_MAGNITUDE, SOURCES
 
 _COMCAT_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query"
+
+
+def _in_apac(lon: float, lat: float) -> bool:
+    b = APAC_BBOX
+    return b["lat_min"] <= lat <= b["lat_max"] and b["lon_min"] <= lon <= b["lon_max"]
 
 
 def _parse_features(features: list) -> list[dict]:
@@ -12,7 +17,7 @@ def _parse_features(features: list) -> list[dict]:
         p = f["properties"]
         lon, lat, _ = f["geometry"]["coordinates"]
         mag = p.get("mag") or 0.0
-        if mag < MIN_MAGNITUDE:
+        if mag < MIN_MAGNITUDE or not _in_apac(lon, lat):
             continue
         if mag >= 6.5:
             severity = "red"
@@ -21,15 +26,15 @@ def _parse_features(features: list) -> list[dict]:
         else:
             severity = "green"
         events.append({
-            "source":     "usgs",
-            "event_id":   f["id"],
+            "source": "usgs",
+            "event_id": f["id"],
             "event_type": "earthquake",
-            "title":      p.get("title", ""),
-            "lat":        lat,
-            "lon":        lon,
-            "severity":   severity,
-            "magnitude":  mag,
-            "country":    None,
+            "title": p.get("title", ""),
+            "lat": lat,
+            "lon": lon,
+            "severity": severity,
+            "magnitude": mag,
+            "country": None,
             "occurred_at": datetime.fromtimestamp(
                 p["time"] / 1000, tz=timezone.utc
             ).isoformat(),
@@ -45,16 +50,20 @@ def fetch() -> list[dict]:
 
 
 def fetch_historical(start: datetime, end: datetime) -> list[dict]:
-    """Fetch from the USGS ComCat API for an arbitrary date range (global)."""
+    """Fetch from the USGS ComCat API for an arbitrary date range."""
     resp = requests.get(
         _COMCAT_URL,
         params={
-            "format":       "geojson",
-            "starttime":    start.strftime("%Y-%m-%d"),
-            "endtime":      end.strftime("%Y-%m-%d"),
+            "format": "geojson",
+            "starttime": start.strftime("%Y-%m-%d"),
+            "endtime": end.strftime("%Y-%m-%d"),
             "minmagnitude": MIN_MAGNITUDE,
-            "limit":        20_000,
-            "orderby":      "time",
+            "minlatitude": APAC_BBOX["lat_min"],
+            "maxlatitude": APAC_BBOX["lat_max"],
+            "minlongitude": APAC_BBOX["lon_min"],
+            "maxlongitude": APAC_BBOX["lon_max"],
+            "limit": 20_000,
+            "orderby": "time",
         },
         timeout=60,
     )

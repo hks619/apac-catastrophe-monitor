@@ -6,33 +6,15 @@ import feedparser
 
 _BASE = "https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en"
 
-_REGION_TERMS = {
-    "Global":        "",
-    "APAC":          '"Asia Pacific" OR APAC OR Japan OR Philippines OR Indonesia OR Australia',
-    "Europe":        "Europe OR Turkey OR Greece OR Italy OR Balkans OR Iberia",
-    "Africa":        "Africa OR Mozambique OR Madagascar OR Ethiopia OR Kenya OR Nigeria",
-    "North America": '"North America" OR "United States" OR Canada OR Mexico OR Caribbean',
-    "South America": '"South America" OR Brazil OR Colombia OR Peru OR Chile OR Argentina',
-    "Antarctica":    "Antarctica OR Antarctic",
+PERIL_QUERIES = {
+    "All Perils":        '"Asia Pacific" OR APAC disaster OR catastrophe OR hazard',
+    "Earthquake":        'earthquake "Asia Pacific" OR Japan OR Philippines OR Indonesia OR "New Zealand"',
+    "Cyclone / Typhoon": 'typhoon OR cyclone "Asia Pacific" OR Pacific OR "Indian Ocean" OR "Bay of Bengal"',
+    "Wildfire":          'wildfire OR bushfire "Asia Pacific" OR Australia OR Indonesia OR "Southeast Asia"',
+    "Flood":             'flood "Asia Pacific" OR Bangladesh OR India OR China OR Vietnam OR Thailand',
+    "Volcano":           'volcano eruption "Asia Pacific" OR Indonesia OR Philippines OR Japan OR "Papua New Guinea"',
+    "Drought":           'drought "Asia Pacific" OR Australia OR India OR China',
 }
-
-
-def get_peril_queries(region: str = "Global") -> dict[str, str]:
-    geo = _REGION_TERMS.get(region, "")
-
-    def q(*terms) -> str:
-        base = " OR ".join(terms)
-        return f"({base}) {geo}".strip() if geo else base
-
-    return {
-        "All Perils":        q("disaster", "catastrophe", "natural hazard"),
-        "Earthquake":        q("earthquake", "tremor", "seismic"),
-        "Cyclone / Typhoon": q("typhoon", "cyclone", "hurricane", "tropical storm"),
-        "Wildfire":          q("wildfire", "bushfire", "forest fire"),
-        "Flood":             q("flood", "flooding", "flash flood"),
-        "Volcano":           q("volcano", "eruption", "volcanic"),
-        "Drought":           q("drought", "water shortage"),
-    }
 
 
 def fetch_news(query: str, max_results: int = 25) -> list[dict]:
