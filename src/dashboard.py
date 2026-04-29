@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 import plotly.express as px
 import pydeck as pdk
+import requests
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -75,6 +76,24 @@ def load_events() -> pd.DataFrame:
 @st.cache_data(ttl=1800)
 def cached_news(query: str) -> list[dict]:
     return _fetch_news(query)
+
+
+@st.cache_data(ttl=86400)
+def _reverse_geocode(lat: float, lon: float) -> str:
+    """Return 'State/Province, Country' for a lat/lon, cached for 24 h."""
+    try:
+        r = requests.get(
+            "https://nominatim.openstreetmap.org/reverse",
+            params={"lat": lat, "lon": lon, "format": "json"},
+            headers={"User-Agent": "apac-catastrophe-monitor/1.0"},
+            timeout=5,
+        )
+        addr = r.json().get("address", {})
+        state   = addr.get("state") or addr.get("region") or addr.get("county") or ""
+        country = addr.get("country") or ""
+        return ", ".join(p for p in [state, country] if p)
+    except Exception:
+        return ""
 
 
 def _event_color(row) -> list[int]:
@@ -231,16 +250,44 @@ def render_live_events(df: pd.DataFrame):
             occurred   = selected.get("occurred_at", "")
             title      = selected.get("title", "") or ""
             country    = selected.get("country", "") or ""
+            lat        = selected.get("lat")
+            lon        = selected.get("lon")
 
-            # Build location-specific query so news matches the actual event location
+            # Reverse-geocode lat/lon → specific region, e.g. "Madhya Pradesh, India"
+            geo_location = ""
+            if lat is not None and lon is not None:
+                try:
+                    geo_location = _reverse_geocode(
+                        round(float(lat), 1), round(float(lon), 1)
+                    )
+                except Exception:
+                    pass
+
+            # Month/year context makes queries much more specific
+            date_ctx = ""
+            try:
+                dt = pd.Timestamp(str(occurred).split("→")[0].strip())
+                date_ctx = dt.strftime("%B %Y")
+            except Exception:
+                pass
+
+            # Build location + date specific query
             if title:
-                # Strip trailing EONET-style numeric IDs (e.g. "Flood in Afghanistan 1103848")
-                news_query = re.sub(r"\s+\d{6,}$", "", title).strip() or title
+                clean = re.sub(r"\s+\d{6,}$", "", title).strip() or title
+                # EONET titles end with "in [Country]" — replace with precise region
+                generic_loc = re.search(r"\s+in\s+(\w+)\s*$", clean, re.IGNORECASE)
+                if generic_loc and geo_location:
+                    base = clean[: generic_loc.start()].strip()
+                    news_query = f"{base} {geo_location} {date_ctx}".strip()
+                else:
+                    news_query = f"{clean} {date_ctx}".strip()
             elif event_type == "cyclone":
-                # Cyclone tracks carry no title; extract storm name from tooltip
-                news_query = tooltip.split("|")[0].strip()  # "Cyclone MOCHA"
+                storm_name = tooltip.split("|")[0].strip()
+                news_query = f"{storm_name} {date_ctx}".strip()
+            elif geo_location:
+                news_query = f"{event_type} {geo_location} {date_ctx}".strip()
             elif country:
-                news_query = f"{event_type} {country}"
+                news_query = f"{event_type} {country} {date_ctx}".strip()
             else:
                 news_query = PERIL_QUERIES.get(
                     _EVENT_TYPE_TO_PERIL.get(event_type, "All Perils"),
