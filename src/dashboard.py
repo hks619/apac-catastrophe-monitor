@@ -142,7 +142,7 @@ def render_live_events(df: pd.DataFrame):
                 tracks.append({
                     "path":       coords,
                     "tooltip":    f"Cyclone {name} | peak {peak_wind} | {peak_sev} alert",
-                    "occurred_at": f"{grp['occurred_at'].min()[:10]} → {grp['occurred_at'].max()[:10]}",
+                    "occurred_at": f"{str(grp['occurred_at'].min())[:10]} → {str(grp['occurred_at'].max())[:10]}",
                     "color":      color,
                 })
             if tracks:
