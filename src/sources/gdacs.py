@@ -1,21 +1,14 @@
 import feedparser
 from datetime import datetime, timezone
 
-from src.config import APAC_BBOX, SOURCES
-
-
-def _in_apac(lon: float, lat: float) -> bool:
-    b = APAC_BBOX
-    return b["lat_min"] <= lat <= b["lat_max"] and b["lon_min"] <= lon <= b["lon_max"]
+from src.config import SOURCES
 
 
 def _parse_coords(entry) -> tuple[float | None, float | None]:
-    # feedparser maps geo:lat/geo:long namespace tags to these attributes
     lat = getattr(entry, "geo_lat", None)
     lon = getattr(entry, "geo_long", None)
     if lat is not None and lon is not None:
         return float(lat), float(lon)
-    # georss:point fallback: "lat lon"
     point = getattr(entry, "georss_point", None)
     if point:
         parts = point.split()
@@ -29,7 +22,7 @@ def fetch() -> list[dict]:
     events = []
     for entry in feed.entries:
         lat, lon = _parse_coords(entry)
-        if lat is None or not _in_apac(lon, lat):
+        if lat is None:
             continue
 
         event_id = str(
@@ -37,9 +30,9 @@ def fetch() -> list[dict]:
             or getattr(entry, "id", None)
             or entry.get("link", "")
         )
-        severity = (getattr(entry, "gdacs_alertlevel", "") or "green").lower()
+        severity   = (getattr(entry, "gdacs_alertlevel", "") or "green").lower()
         event_type = (getattr(entry, "gdacs_eventtype", "") or "unknown").lower()
-        country = getattr(entry, "gdacs_country", None)
+        country    = getattr(entry, "gdacs_country", None)
 
         occurred_at = None
         if entry.get("published_parsed"):
@@ -48,16 +41,16 @@ def fetch() -> list[dict]:
             ).isoformat()
 
         events.append({
-            "source": "gdacs",
-            "event_id": event_id,
+            "source":     "gdacs",
+            "event_id":   event_id,
             "event_type": event_type,
-            "title": entry.get("title", ""),
-            "lat": lat,
-            "lon": lon,
-            "severity": severity,
-            "magnitude": None,
-            "country": country,
+            "title":      entry.get("title", ""),
+            "lat":        lat,
+            "lon":        lon,
+            "severity":   severity,
+            "magnitude":  None,
+            "country":    country,
             "occurred_at": occurred_at,
-            "url": entry.get("link", ""),
+            "url":        entry.get("link", ""),
         })
     return events

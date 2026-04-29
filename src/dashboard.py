@@ -10,13 +10,13 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.config import DB_PATH
-from src.news import PERIL_QUERIES, fetch_news as _fetch_news
+from src.config import DB_PATH, REGIONS
+from src.news import fetch_news as _fetch_news, get_peril_queries
 
 st.set_page_config(
-    page_title="APAC Catastrophe Monitor",
+    page_title="Global Catastrophe Monitor",
     layout="wide",
-    page_icon="🌏",
+    page_icon="🌍",
 )
 
 _SEVERITY_COLOR = {
@@ -24,7 +24,6 @@ _SEVERITY_COLOR = {
     "orange": [234, 88,  12,  200],
     "green":  [22,  163, 74,  200],
 }
-
 _TYPE_COLOR = {
     "earthquake": [234, 88,  12],
     "wildfire":   [220, 38,  38],
@@ -38,7 +37,6 @@ _TYPE_COLOR = {
 }
 _DEFAULT_COLOR = [107, 114, 128, 180]
 
-# Maps raw event_type values to PERIL_QUERIES keys
 _EVENT_TYPE_TO_PERIL = {
     "earthquake": "Earthquake",
     "eq":         "Earthquake",
@@ -82,14 +80,28 @@ def _event_color(row) -> list[int]:
     return _TYPE_COLOR.get(row["event_type"], _DEFAULT_COLOR)
 
 
-def render_live_events(df: pd.DataFrame):
+def _apply_region(df: pd.DataFrame, region_name: str) -> pd.DataFrame:
+    bbox = REGIONS[region_name]["bbox"]
+    if bbox is None:
+        return df
+    coord_mask  = (
+        df["lat"].between(bbox["lat_min"], bbox["lat_max"]) &
+        df["lon"].between(bbox["lon_min"], bbox["lon_max"])
+    )
+    return df[coord_mask | df["lat"].isna()]
+
+
+def render_live_events(df: pd.DataFrame, region_name: str):
     # ── Sidebar filters ────────────────────────────────────────────────────────
     with st.sidebar:
+        st.markdown("---")
         st.header("Filters")
 
-        has_dates = not df["occurred_at"].isna().all()
-        min_date = df["occurred_at"].min().date() if has_dates else (datetime.now().date() - timedelta(days=90))
-        max_date = df["occurred_at"].max().date() if has_dates else datetime.now().date()
+        region_df = _apply_region(df, region_name)
+
+        has_dates = not region_df["occurred_at"].isna().all()
+        min_date  = region_df["occurred_at"].min().date() if has_dates else datetime.now().date() - timedelta(days=365)
+        max_date  = region_df["occurred_at"].max().date() if has_dates else datetime.now().date()
         date_range = st.date_input(
             "Date range",
             value=(min_date, max_date),
@@ -97,10 +109,10 @@ def render_live_events(df: pd.DataFrame):
             max_value=max_date,
         )
 
-        all_types = sorted(df["event_type"].dropna().unique().tolist())
+        all_types = sorted(region_df["event_type"].dropna().unique().tolist())
         selected_types = st.multiselect("Event type", all_types, default=all_types)
 
-        all_sources = sorted(df["source"].dropna().unique().tolist())
+        all_sources = sorted(region_df["source"].dropna().unique().tolist())
         selected_sources = st.multiselect("Data source", all_sources, default=all_sources)
 
         min_mag = st.slider("Min earthquake magnitude", 4.0, 9.0, 4.5, 0.1)
@@ -111,18 +123,20 @@ def render_live_events(df: pd.DataFrame):
             st.rerun()
 
     # ── Apply filters ──────────────────────────────────────────────────────────
-    mask = pd.Series(True, index=df.index)
+    filtered = region_df.copy()
     if len(date_range) == 2:
         start = pd.Timestamp(date_range[0], tz="UTC")
         end   = pd.Timestamp(date_range[1], tz="UTC") + timedelta(days=1)
-        mask &= df["occurred_at"].between(start, end, inclusive="left")
+        filtered = filtered[filtered["occurred_at"].between(start, end, inclusive="left")]
     if selected_types:
-        mask &= df["event_type"].isin(selected_types)
+        filtered = filtered[filtered["event_type"].isin(selected_types)]
     if selected_sources:
-        mask &= df["source"].isin(selected_sources)
-    mask &= ~(df["source"] == "usgs") | df["magnitude"].isna() | (df["magnitude"] >= min_mag)
-
-    filtered = df[mask].copy()
+        filtered = filtered[filtered["source"].isin(selected_sources)]
+    filtered = filtered[
+        ~(filtered["source"] == "usgs") |
+        filtered["magnitude"].isna() |
+        (filtered["magnitude"] >= min_mag)
+    ]
 
     # ── KPIs ───────────────────────────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
@@ -151,8 +165,8 @@ def render_live_events(df: pd.DataFrame):
                     (s for s in ("red", "orange", "green") if s in grp["severity"].values),
                     "green",
                 )
-                color = _SEVERITY_COLOR.get(peak_sev, [255, 200, 0, 200])
-                name = grp["title"].iloc[0].replace("Tropical Cyclone ", "")
+                color    = _SEVERITY_COLOR.get(peak_sev, [255, 200, 0, 200])
+                name     = grp["title"].iloc[0].replace("Tropical Cyclone ", "")
                 wind_vals = grp["magnitude"].dropna()
                 peak_wind = f"{int(wind_vals.max())} kt" if not wind_vals.empty else "?"
                 tracks.append({
@@ -199,10 +213,15 @@ def render_live_events(df: pd.DataFrame):
                 line_width_min_pixels=1,
             ))
 
+        center = REGIONS[region_name]["center"]
         deck = pdk.Deck(
             layers=layers,
             views=[pdk.View(type="_GlobeView", controller=True)],
-            initial_view_state=pdk.ViewState(latitude=10, longitude=115, zoom=1),
+            initial_view_state=pdk.ViewState(
+                latitude=center["lat"],
+                longitude=center["lon"],
+                zoom=center["zoom"],
+            ),
             map_provider="carto",
             map_style="https://basemaps.cartocdn.com/gl/dark-matter-nolabels-gl-style/style.json",
             tooltip={"text": "{tooltip}\n{occurred_at}"},
@@ -214,7 +233,7 @@ def render_live_events(df: pd.DataFrame):
         )
 
         # ── Click-to-news panel ────────────────────────────────────────────
-        selected = None
+        selected    = None
         sel_objects = getattr(getattr(chart_event, "selection", None), "objects", None) or {}
         for layer_hits in sel_objects.values():
             if layer_hits:
@@ -222,19 +241,20 @@ def render_live_events(df: pd.DataFrame):
                 break
 
         if selected:
-            event_type = selected.get("event_type", "")
-            peril_name = _EVENT_TYPE_TO_PERIL.get(event_type, "All Perils")
-            tooltip    = selected.get("tooltip", event_type)
-            occurred   = selected.get("occurred_at", "")
+            peril_queries = get_peril_queries(region_name)
+            event_type    = selected.get("event_type", "")
+            peril_name    = _EVENT_TYPE_TO_PERIL.get(event_type, "All Perils")
+            if peril_name not in peril_queries:
+                peril_name = "All Perils"
 
             st.markdown("---")
             with st.container(border=True):
-                st.markdown(f"**{tooltip}**")
-                if occurred:
-                    st.caption(occurred)
+                st.markdown(f"**{selected.get('tooltip', event_type)}**")
+                if selected.get("occurred_at"):
+                    st.caption(selected["occurred_at"])
                 st.markdown(f"**Related news — {peril_name}**")
                 with st.spinner("Fetching news…"):
-                    articles = cached_news(PERIL_QUERIES[peril_name])
+                    articles = cached_news(peril_queries[peril_name])
                 for article in articles[:6]:
                     src_date = " · ".join(p for p in [article["source"], article["published"]] if p)
                     st.markdown(f"- [{article['title']}]({article['link']})")
@@ -247,7 +267,6 @@ def render_live_events(df: pd.DataFrame):
 
     # ── Charts ─────────────────────────────────────────────────────────────────
     col_l, col_r = st.columns(2)
-
     with col_l:
         st.subheader("Events over time")
         time_df = (
@@ -280,7 +299,6 @@ def render_live_events(df: pd.DataFrame):
         fig3.update_layout(margin=dict(t=10, b=10))
         st.plotly_chart(fig3, use_container_width=True)
 
-    # ── Event table + export ───────────────────────────────────────────────────
     st.subheader("Event table")
     display_cols = ["occurred_at", "event_type", "title", "country", "magnitude", "severity", "source"]
     st.dataframe(
@@ -290,19 +308,20 @@ def render_live_events(df: pd.DataFrame):
     st.download_button(
         label="Export CSV",
         data=filtered.to_csv(index=False),
-        file_name=f"apac_events_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+        file_name=f"events_{region_name.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
         mime="text/csv",
     )
 
 
-def render_news():
-    st.subheader("APAC Peril News Feed")
+def render_news(region_name: str):
+    st.subheader(f"Peril News Feed — {region_name}")
     st.caption("Live headlines from Google News — refreshed every 30 minutes")
 
-    # ── Peril toggle ───────────────────────────────────────────────────────────
+    peril_queries = get_peril_queries(region_name)
+
     selected_peril = st.radio(
         "Select peril",
-        list(PERIL_QUERIES.keys()),
+        list(peril_queries.keys()),
         horizontal=True,
         label_visibility="collapsed",
     )
@@ -313,13 +332,12 @@ def render_news():
             st.cache_data.clear()
             st.rerun()
     with col_note:
-        st.caption("News cached for 30 min. Click refresh to fetch latest.")
+        st.caption("Cached 30 min. Click refresh for latest.")
 
     st.markdown("---")
 
-    # ── Fetch and display ──────────────────────────────────────────────────────
     with st.spinner(f"Fetching {selected_peril} news…"):
-        articles = cached_news(PERIL_QUERIES[selected_peril])
+        articles = cached_news(peril_queries[selected_peril])
 
     if not articles:
         st.info("No articles found. Try refreshing or selecting a different peril.")
@@ -328,30 +346,37 @@ def render_news():
     for article in articles:
         with st.container(border=True):
             st.markdown(f"#### [{article['title']}]({article['link']})")
-            meta_parts = [p for p in [article["source"], article["published"]] if p]
-            if meta_parts:
-                st.caption(" · ".join(meta_parts))
+            meta = " · ".join(p for p in [article["source"], article["published"]] if p)
+            if meta:
+                st.caption(meta)
             if article["summary"]:
                 st.write(article["summary"])
 
 
 def main():
-    st.title("🌏 APAC Catastrophe Monitor")
+    st.title("🌍 Global Catastrophe Monitor")
     st.caption("Real-time multi-hazard event tracking for reinsurance cat risk analysis")
 
     df = load_events()
-
     if df.empty:
         st.warning("No data yet. Run `python -m src.ingest` to populate the database.")
         st.stop()
 
-    tab1, tab2 = st.tabs(["🌏 Live Events", "📰 News Feed"])
+    # ── Region selector in sidebar ─────────────────────────────────────────────
+    with st.sidebar:
+        region_name = st.radio(
+            "Region",
+            list(REGIONS.keys()),
+            index=0,
+        )
+
+    tab1, tab2 = st.tabs(["🌍 Live Events", "📰 News Feed"])
 
     with tab1:
-        render_live_events(df)
+        render_live_events(df, region_name)
 
     with tab2:
-        render_news()
+        render_news(region_name)
 
 
 if __name__ == "__main__":

@@ -12,9 +12,6 @@ _URL = (
     "/v04r01/access/csv/ibtracs.last3years.list.v04r01.csv"
 )
 
-# APAC basins: Western Pacific, North Indian, South Indian, South Pacific
-_APAC_BASINS = {"WP", "NI", "SI", "SP"}
-
 
 def _sshs_to_severity(sshs) -> str:
     try:
@@ -40,8 +37,6 @@ def fetch() -> list[dict]:
         na_values=[" "],
     )
 
-    df = df[df["BASIN"].isin(_APAC_BASINS)].copy()
-
     df["ISO_TIME"] = pd.to_datetime(df["ISO_TIME"], utc=True, errors="coerce")
     cutoff = datetime.now(timezone.utc) - timedelta(days=365)
     df = df[df["ISO_TIME"] >= cutoff].dropna(subset=["ISO_TIME", "LAT", "LON"])
@@ -54,7 +49,7 @@ def fetch() -> list[dict]:
         except (ValueError, TypeError):
             continue
 
-        sid = str(row["SID"]).strip()
+        sid      = str(row["SID"]).strip()
         iso_time = row["ISO_TIME"].isoformat()
 
         name = str(row.get("NAME", "")).strip()
@@ -70,17 +65,17 @@ def fetch() -> list[dict]:
         severity = _sshs_to_severity(row.get("USA_SSHS"))
 
         events.append({
-            "source": "ibtracs",
-            "event_id": f"{sid}|{iso_time}",
+            "source":     "ibtracs",
+            "event_id":   f"{sid}|{iso_time}",
             "event_type": "cyclone",
-            "title": f"Tropical Cyclone {name}",
-            "lat": lat,
-            "lon": lon,
-            "severity": severity,
-            "magnitude": wind,   # max wind speed in knots
-            "country": None,
+            "title":      f"Tropical Cyclone {name}",
+            "lat":        lat,
+            "lon":        lon,
+            "severity":   severity,
+            "magnitude":  wind,
+            "country":    None,
             "occurred_at": iso_time,
-            "url": "https://www.ncdc.noaa.gov/ibtracs/",
+            "url":        "https://www.ncdc.noaa.gov/ibtracs/",
         })
 
     return events
