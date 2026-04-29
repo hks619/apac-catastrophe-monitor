@@ -17,6 +17,17 @@ def _parse_coords(entry) -> tuple[float | None, float | None]:
     return None, None
 
 
+_TYPE_NORMALIZE = {
+    "wf": "wildfire",
+    "eq": "earthquake",
+    "fl": "flood",
+    "dr": "drought",
+    "tc": "cyclone",
+    "vo": "volcano",
+    "ts": "tsunami",
+}
+
+
 def fetch() -> list[dict]:
     feed = feedparser.parse(SOURCES["gdacs"])
     events = []
@@ -31,7 +42,8 @@ def fetch() -> list[dict]:
             or entry.get("link", "")
         )
         severity = (getattr(entry, "gdacs_alertlevel", "") or "green").lower()
-        event_type = (getattr(entry, "gdacs_eventtype", "") or "unknown").lower()
+        raw_type = (getattr(entry, "gdacs_eventtype", "") or "unknown").lower()
+        event_type = _TYPE_NORMALIZE.get(raw_type, raw_type)
         country = getattr(entry, "gdacs_country", None)
 
         occurred_at = None

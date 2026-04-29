@@ -55,6 +55,7 @@ def upsert_event(conn, event: dict):
             (:source, :event_id, :event_type, :title, :lat, :lon,
              :severity, :magnitude, :country, :occurred_at, :fetched_at, :url)
         ON CONFLICT(source, event_id) DO UPDATE SET
+            event_type = excluded.event_type,
             title      = excluded.title,
             severity   = excluded.severity,
             magnitude  = excluded.magnitude,

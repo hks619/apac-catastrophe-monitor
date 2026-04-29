@@ -190,8 +190,8 @@ def render_live_events(df: pd.DataFrame):
                     get_path="path",
                     get_color="color",
                     get_width=10_000,
-                    width_min_pixels=1,
-                    width_max_pixels=3,
+                    width_min_pixels=2,
+                    width_max_pixels=6,
                     pickable=True,
                     opacity=0.85,
                 ))
