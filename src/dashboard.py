@@ -8,10 +8,10 @@ import plotly.express as px
 import pydeck as pdk
 import streamlit as st
 
-# Allow `streamlit run src/dashboard.py` from the project root
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.config import DB_PATH
+from src.news import PERIL_QUERIES, fetch_news as _fetch_news
 
 st.set_page_config(
     page_title="APAC Catastrophe Monitor",
@@ -55,22 +55,18 @@ def load_events() -> pd.DataFrame:
     return df
 
 
+@st.cache_data(ttl=1800)
+def cached_news(query: str) -> list[dict]:
+    return _fetch_news(query)
+
+
 def _event_color(row) -> list[int]:
     if row["severity"] in _SEVERITY_COLOR:
         return _SEVERITY_COLOR[row["severity"]]
     return _TYPE_COLOR.get(row["event_type"], _DEFAULT_COLOR)
 
 
-def main():
-    st.title("🌏 APAC Catastrophe Monitor")
-    st.caption("Real-time multi-hazard event tracking for reinsurance cat risk analysis")
-
-    df = load_events()
-
-    if df.empty:
-        st.warning("No data yet. Run `python -m src.ingest` to populate the database.")
-        st.stop()
-
+def render_live_events(df: pd.DataFrame):
     # ── Sidebar filters ────────────────────────────────────────────────────────
     with st.sidebar:
         st.header("Filters")
@@ -80,7 +76,7 @@ def main():
         max_date = df["occurred_at"].max().date() if has_dates else datetime.now().date()
         date_range = st.date_input(
             "Date range",
-            value=(max(min_date, datetime.now().date() - timedelta(days=30)), max_date),
+            value=(min_date, max_date),
             min_value=min_date,
             max_value=max_date,
         )
@@ -108,7 +104,6 @@ def main():
         mask &= df["event_type"].isin(selected_types)
     if selected_sources:
         mask &= df["source"].isin(selected_sources)
-    # Magnitude filter only applies to earthquakes — cyclone wind speeds are in knots
     mask &= ~(df["source"] == "usgs") | df["magnitude"].isna() | (df["magnitude"] >= min_mag)
 
     filtered = df[mask].copy()
@@ -128,7 +123,6 @@ def main():
     if not map_df.empty:
         layers = []
 
-        # ── Cyclone tracks: PathLayer grouped by storm ─────────────────────
         cyc_df = map_df[map_df["source"] == "ibtracs"].copy()
         if not cyc_df.empty:
             cyc_df["storm_id"] = cyc_df["event_id"].str.split("|").str[0]
@@ -146,10 +140,10 @@ def main():
                 wind_vals = grp["magnitude"].dropna()
                 peak_wind = f"{int(wind_vals.max())} kt" if not wind_vals.empty else "?"
                 tracks.append({
-                    "path": coords,
-                    "tooltip": f"Cyclone {name} | peak {peak_wind} | {peak_sev} alert",
+                    "path":       coords,
+                    "tooltip":    f"Cyclone {name} | peak {peak_wind} | {peak_sev} alert",
                     "occurred_at": f"{grp['occurred_at'].min()[:10]} → {grp['occurred_at'].max()[:10]}",
-                    "color": color,
+                    "color":      color,
                 })
             if tracks:
                 layers.append(pdk.Layer(
@@ -163,14 +157,13 @@ def main():
                     opacity=0.85,
                 ))
 
-        # ── All other events: ScatterplotLayer ─────────────────────────────
         other_df = map_df[map_df["source"] != "ibtracs"].copy()
         if not other_df.empty:
-            other_df["color"]   = other_df.apply(_event_color, axis=1)
-            other_df["radius"]  = other_df["magnitude"].fillna(5.0).apply(
+            other_df["color"]    = other_df.apply(_event_color, axis=1)
+            other_df["radius"]   = other_df["magnitude"].fillna(5.0).apply(
                 lambda m: max(40_000, m * 18_000)
             )
-            other_df["tooltip"] = other_df.apply(
+            other_df["tooltip"]  = other_df.apply(
                 lambda r: f"{r['title']} | {r['event_type']} | {r['source']}", axis=1
             )
             other_df["occurred_at"] = other_df["occurred_at"].astype(str)
@@ -250,6 +243,65 @@ def main():
         file_name=f"apac_events_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
         mime="text/csv",
     )
+
+
+def render_news():
+    st.subheader("APAC Peril News Feed")
+    st.caption("Live headlines from Google News — refreshed every 30 minutes")
+
+    # ── Peril toggle ───────────────────────────────────────────────────────────
+    selected_peril = st.radio(
+        "Select peril",
+        list(PERIL_QUERIES.keys()),
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+
+    col_btn, col_note = st.columns([1, 6])
+    with col_btn:
+        if st.button("Refresh news"):
+            st.cache_data.clear()
+            st.rerun()
+    with col_note:
+        st.caption("News cached for 30 min. Click refresh to fetch latest.")
+
+    st.markdown("---")
+
+    # ── Fetch and display ──────────────────────────────────────────────────────
+    with st.spinner(f"Fetching {selected_peril} news…"):
+        articles = cached_news(PERIL_QUERIES[selected_peril])
+
+    if not articles:
+        st.info("No articles found. Try refreshing or selecting a different peril.")
+        return
+
+    for article in articles:
+        with st.container(border=True):
+            st.markdown(f"#### [{article['title']}]({article['link']})")
+            meta_parts = [p for p in [article["source"], article["published"]] if p]
+            if meta_parts:
+                st.caption(" · ".join(meta_parts))
+            if article["summary"]:
+                st.write(article["summary"])
+
+
+def main():
+    st.title("🌏 APAC Catastrophe Monitor")
+    st.caption("Real-time multi-hazard event tracking for reinsurance cat risk analysis")
+
+    df = load_events()
+
+    if df.empty:
+        st.warning("No data yet. Run `python -m src.ingest` to populate the database.")
+        st.stop()
+
+    tab1, tab2 = st.tabs(["🌏 Live Events", "📰 News Feed"])
+
+    with tab1:
+        render_live_events(df)
+
+    with tab2:
+        render_news()
 
 
 if __name__ == "__main__":
