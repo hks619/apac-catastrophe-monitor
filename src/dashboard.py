@@ -1,3 +1,4 @@
+import re
 import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
@@ -226,18 +227,34 @@ def render_live_events(df: pd.DataFrame):
 
         if selected:
             event_type = selected.get("event_type", "")
-            peril_name = _EVENT_TYPE_TO_PERIL.get(event_type, "All Perils")
             tooltip    = selected.get("tooltip", event_type)
             occurred   = selected.get("occurred_at", "")
+            title      = selected.get("title", "") or ""
+            country    = selected.get("country", "") or ""
+
+            # Build location-specific query so news matches the actual event location
+            if title:
+                # Strip trailing EONET-style numeric IDs (e.g. "Flood in Afghanistan 1103848")
+                news_query = re.sub(r"\s+\d{6,}$", "", title).strip() or title
+            elif event_type == "cyclone":
+                # Cyclone tracks carry no title; extract storm name from tooltip
+                news_query = tooltip.split("|")[0].strip()  # "Cyclone MOCHA"
+            elif country:
+                news_query = f"{event_type} {country}"
+            else:
+                news_query = PERIL_QUERIES.get(
+                    _EVENT_TYPE_TO_PERIL.get(event_type, "All Perils"),
+                    event_type,
+                )
 
             st.markdown("---")
             with st.container(border=True):
                 st.markdown(f"**{tooltip}**")
                 if occurred:
                     st.caption(occurred)
-                st.markdown(f"**Related news — {peril_name}**")
+                st.markdown(f"**Related news — {news_query}**")
                 with st.spinner("Fetching news…"):
-                    articles = cached_news(PERIL_QUERIES[peril_name])
+                    articles = cached_news(news_query)
                 for article in articles[:6]:
                     src_date = " · ".join(p for p in [article["source"], article["published"]] if p)
                     st.markdown(f"- [{article['title']}]({article['link']})")
