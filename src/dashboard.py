@@ -169,8 +169,9 @@ def render_live_events(df: pd.DataFrame):
                     data=tracks,
                     get_path="path",
                     get_color="color",
-                    get_width=55_000,
+                    get_width=10_000,
                     width_min_pixels=1,
+                    width_max_pixels=3,
                     pickable=True,
                     opacity=0.85,
                 ))
