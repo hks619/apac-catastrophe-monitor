@@ -48,12 +48,12 @@ def backfill_usgs(years: int = 1):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Backfill historical APAC earthquake data")
+    parser = argparse.ArgumentParser(description="Backfill historical global earthquake data")
     parser.add_argument("--years", type=int, default=1, help="Years of history to fetch (default: 1)")
     args = parser.parse_args()
 
     init_db()
-    log.info("Backfilling %d year(s) of USGS M%.1f+ earthquakes in APAC…", args.years, 4.5)
+    log.info("Backfilling %d year(s) of USGS M%.1f+ earthquakes globally…", args.years, 4.5)
     backfill_usgs(years=args.years)
 
 

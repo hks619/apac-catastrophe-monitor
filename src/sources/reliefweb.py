@@ -3,13 +3,8 @@ import os
 
 import requests
 
-from src.config import APAC_ISO3
-
 log = logging.getLogger(__name__)
 
-# ReliefWeb v1 was decommissioned; v2 requires a registered appname.
-# Register at https://apidoc.reliefweb.int/parameters#appname
-# Set RELIEFWEB_APPNAME env var (or accept rate-limited anonymous access).
 _BASE_URL = "https://api.reliefweb.int/v2/disasters"
 
 
@@ -24,11 +19,8 @@ def fetch() -> list[dict]:
 
     payload = {
         "filter": {
-            "operator": "AND",
-            "conditions": [
-                {"field": "status", "value": ["ongoing", "alert"]},
-                {"field": "primary_country.iso3", "value": list(APAC_ISO3)},
-            ],
+            "field": "status",
+            "value": ["ongoing", "alert"],
         },
         "fields": {
             "include": ["id", "name", "type", "status", "primary_country", "date", "url"],

@@ -12,9 +12,6 @@ _URL = (
     "/v04r01/access/csv/ibtracs.last3years.list.v04r01.csv"
 )
 
-# APAC basins: Western Pacific, North Indian, South Indian, South Pacific
-_APAC_BASINS = {"WP", "NI", "SI", "SP"}
-
 
 def _sshs_to_severity(sshs) -> str:
     try:
@@ -39,8 +36,6 @@ def fetch() -> list[dict]:
         low_memory=False,
         na_values=[" "],
     )
-
-    df = df[df["BASIN"].isin(_APAC_BASINS)].copy()
 
     df["ISO_TIME"] = pd.to_datetime(df["ISO_TIME"], utc=True, errors="coerce")
     cutoff = datetime.now(timezone.utc) - timedelta(days=365)
@@ -77,7 +72,7 @@ def fetch() -> list[dict]:
             "lat": lat,
             "lon": lon,
             "severity": severity,
-            "magnitude": wind,   # max wind speed in knots
+            "magnitude": wind,
             "country": None,
             "occurred_at": iso_time,
             "url": "https://www.ncdc.noaa.gov/ibtracs/",

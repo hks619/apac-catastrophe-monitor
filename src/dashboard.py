@@ -16,9 +16,9 @@ from src.config import DB_PATH
 from src.news import PERIL_QUERIES, fetch_news as _fetch_news
 
 st.set_page_config(
-    page_title="APAC Catastrophe Monitor",
+    page_title="Global Catastrophe Monitor",
     layout="wide",
-    page_icon="🌏",
+    page_icon="🌍",
 )
 
 _SEVERITY_COLOR = {
@@ -363,7 +363,7 @@ def render_live_events(df: pd.DataFrame):
 
 
 def render_news():
-    st.subheader("APAC Peril News Feed")
+    st.subheader("Global Peril News Feed")
     st.caption("Live headlines from Google News — refreshed every 30 minutes")
 
     # ── Peril toggle ───────────────────────────────────────────────────────────
@@ -403,16 +403,17 @@ def render_news():
 
 
 def main():
-    st.title("🌏 APAC Catastrophe Monitor")
-    st.caption("Real-time multi-hazard event tracking for reinsurance cat risk analysis")
+    st.title("🌍 Global Catastrophe Monitor")
+    st.caption("Real-time multi-hazard event tracking for global cat risk analysis")
 
     df = load_events()
 
     if df.empty:
-        st.warning("No data yet. Run `python -m src.ingest` to populate the database.")
+        st.warning("No data yet. Run `python -m src.ingest` to populate the database.  "
+                   "For earthquake history run `python -m src.backfill`.")
         st.stop()
 
-    tab1, tab2 = st.tabs(["🌏 Live Events", "📰 News Feed"])
+    tab1, tab2 = st.tabs(["🌍 Live Events", "📰 News Feed"])
 
     with tab1:
         render_live_events(df)

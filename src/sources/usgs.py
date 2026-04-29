@@ -1,14 +1,9 @@
 import requests
 from datetime import datetime, timezone
 
-from src.config import APAC_BBOX, MIN_MAGNITUDE, SOURCES
+from src.config import MIN_MAGNITUDE, SOURCES
 
 _COMCAT_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query"
-
-
-def _in_apac(lon: float, lat: float) -> bool:
-    b = APAC_BBOX
-    return b["lat_min"] <= lat <= b["lat_max"] and b["lon_min"] <= lon <= b["lon_max"]
 
 
 def _parse_features(features: list) -> list[dict]:
@@ -17,7 +12,7 @@ def _parse_features(features: list) -> list[dict]:
         p = f["properties"]
         lon, lat, _ = f["geometry"]["coordinates"]
         mag = p.get("mag") or 0.0
-        if mag < MIN_MAGNITUDE or not _in_apac(lon, lat):
+        if mag < MIN_MAGNITUDE:
             continue
         if mag >= 6.5:
             severity = "red"
@@ -58,10 +53,6 @@ def fetch_historical(start: datetime, end: datetime) -> list[dict]:
             "starttime": start.strftime("%Y-%m-%d"),
             "endtime": end.strftime("%Y-%m-%d"),
             "minmagnitude": MIN_MAGNITUDE,
-            "minlatitude": APAC_BBOX["lat_min"],
-            "maxlatitude": APAC_BBOX["lat_max"],
-            "minlongitude": APAC_BBOX["lon_min"],
-            "maxlongitude": APAC_BBOX["lon_max"],
             "limit": 20_000,
             "orderby": "time",
         },

@@ -1,6 +1,6 @@
 import requests
 
-from src.config import APAC_BBOX, SOURCES
+from src.config import SOURCES
 
 _CATEGORY_MAP = {
     "wildfires": "wildfire",
@@ -17,15 +17,10 @@ _CATEGORY_MAP = {
 }
 
 
-def _in_apac(lon: float, lat: float) -> bool:
-    b = APAC_BBOX
-    return b["lat_min"] <= lat <= b["lat_max"] and b["lon_min"] <= lon <= b["lon_max"]
-
-
 def fetch() -> list[dict]:
     resp = requests.get(
         SOURCES["eonet"],
-        params={"status": "all", "limit": 300, "days": 90},
+        params={"status": "all", "limit": 500, "days": 90},
         timeout=30,
     )
     resp.raise_for_status()
@@ -35,15 +30,12 @@ def fetch() -> list[dict]:
         geometries = ev.get("geometry", [])
         if not geometries:
             continue
-        # Use the most recent point geometry
         point_geom = next(
             (g for g in reversed(geometries) if g.get("type") == "Point"), None
         )
         if point_geom is None:
             continue
         lon, lat = point_geom["coordinates"]
-        if not _in_apac(lon, lat):
-            continue
 
         categories = ev.get("categories", [])
         cat_id = categories[0].get("id", "") if categories else ""
